@@ -1,0 +1,191 @@
+import { useEffect, useMemo, useState } from 'react';
+import AppShell from '../components/AppShell.jsx';
+import SectionCard from '../components/SectionCard.jsx';
+import { getStudentAgenda, updateSessionExercise } from '../api/client.js';
+import { useAuth } from '../context/AuthContext.jsx';
+
+const weekdays = ['SEGUNDA', 'TERCA', 'QUARTA', 'QUINTA', 'SEXTA', 'SABADO', 'DOMINGO'];
+
+export default function AlunoDashboard() {
+  const { user } = useAuth();
+  const [agenda, setAgenda] = useState([]);
+  const [error, setError] = useState('');
+  const [weekdayFilter, setWeekdayFilter] = useState('');
+  const [savingId, setSavingId] = useState(null);
+
+  async function loadAgenda() {
+    try {
+      setError('');
+      const data = await getStudentAgenda(weekdayFilter || null);
+      setAgenda(data);
+    } catch (err) {
+      setError('Não foi possível carregar seu treino.');
+    }
+  }
+
+  useEffect(() => {
+    loadAgenda();
+  }, [weekdayFilter]);
+
+  const treinoDoDia = useMemo(() => {
+    const todayIdx = new Date().getDay(); // 0-6, domingo=0
+    const mapIdx = [6, 0, 1, 2, 3, 4, 5];
+    const todayLabel = weekdays[mapIdx[todayIdx]];
+    return agenda.find((s) => (s.weekday || '').toUpperCase() === todayLabel) || agenda[0] || null;
+  }, [agenda]);
+
+  async function handleSave(item, updates) {
+    setSavingId(item.id);
+    try {
+      const payload = {
+        params: updates,
+      };
+      await updateSessionExercise(item.id, payload);
+      // refresh agenda
+      await loadAgenda();
+    } catch (err) {
+      setError('Erro ao salvar alterações.');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <AppShell>
+      <div className="mb-4">
+        <p className="text-xs text-slate-500 uppercase tracking-wide">Meus treinos</p>
+        <h1 className="text-2xl font-bold text-slate-900">Dashboard do Aluno</h1>
+        <p className="text-sm text-slate-600">Treinos atribuídos pelo seu professor. Olá, {user?.name || 'aluno'}.</p>
+      </div>
+
+      <SectionCard
+        title="Treino do dia"
+        description="Selecionamos pelo dia da semana. Você pode filtrar por outro dia abaixo."
+      >
+        {treinoDoDia ? (
+          <div className="border rounded-lg p-3 bg-slate-50">
+            <p className="text-xs uppercase text-slate-500">{treinoDoDia.weekday || 'Dia livre'}</p>
+            <p className="text-xl font-semibold text-slate-900">{treinoDoDia.name}</p>
+            <p className="text-sm text-slate-600 mt-1">{treinoDoDia.notes || 'Sem observações.'}</p>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Nenhuma sessão disponível.</p>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Agenda da semana"
+        description="Filtre por dia para ver treinos específicos."
+        actions={
+          <select
+            className="border rounded px-3 py-2 text-sm"
+            value={weekdayFilter}
+            onChange={(e) => setWeekdayFilter(e.target.value)}
+          >
+            <option value="">Todos os dias</option>
+            {weekdays.map((w) => (
+              <option key={w} value={w}>{w}</option>
+            ))}
+          </select>
+        }
+      >
+        {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
+        <div className="grid md:grid-cols-2 gap-3">
+          {agenda.map((s) => (
+            <div key={s.id} className="border rounded-lg p-3 bg-white">
+              <p className="text-xs uppercase text-slate-500">{s.weekday || 'Dia livre'}</p>
+              <p className="font-semibold text-slate-800">{s.name}</p>
+              <p className="text-sm text-slate-600">{s.main_type || 'Modalidade não informada'}</p>
+              {s.notes && <p className="text-xs text-slate-500 mt-1">{s.notes}</p>}
+
+              <div className="mt-3 space-y-2">
+                {s.exercises.map((ex) => {
+                  const endurance = ex.exercise.type === 'CORRIDA' || ex.exercise.type === 'PEDAL';
+                  const muscParams = {
+                    sets: ex.params?.sets || ex.params?.series || '',
+                    reps: ex.params?.reps || '',
+                    load: ex.params?.load || ex.params?.carga || '',
+                    rest: ex.params?.rest || ex.params?.resto || '',
+                    notes: ex.params?.notes || '',
+                  };
+                  return (
+                    <div key={ex.id} className="border rounded px-3 py-2 bg-slate-50 text-xs text-slate-700">
+                      <div className="flex justify-between">
+                        <span className="font-semibold">{ex.order}. {ex.exercise.name}</span>
+                        <span className="text-slate-500">{ex.exercise.type}</span>
+                      </div>
+
+                      {endurance ? (
+                        <div className="mt-1 space-y-1">
+                          {ex.params?.duration_min && <div>Duração: {ex.params.duration_min} min</div>}
+                          {ex.params?.distance_km && <div>Distância: {ex.params.distance_km} km</div>}
+                          {ex.params?.pace_target && <div>Pace: {ex.params.pace_target}</div>}
+                          {ex.params?.intensity_zone && <div>Zona: {ex.params.intensity_zone}</div>}
+                          {ex.params?.notes && <div>Notas: {ex.params.notes}</div>}
+                        </div>
+                      ) : (
+                        <div className="mt-2 space-y-1">
+                          <div className="grid grid-cols-4 gap-2">
+                            <label className="col-span-1 flex items-center gap-1">Séries
+                              <input
+                                className="w-full border rounded px-1 py-0.5"
+                                defaultValue={muscParams.sets}
+                                onBlur={(e) => muscParams.sets = e.target.value}
+                              />
+                            </label>
+                            <label className="col-span-1 flex items-center gap-1">Reps
+                              <input
+                                className="w-full border rounded px-1 py-0.5"
+                                defaultValue={muscParams.reps}
+                                onBlur={(e) => muscParams.reps = e.target.value}
+                              />
+                            </label>
+                            <label className="col-span-1 flex items-center gap-1">Carga
+                              <input
+                                className="w-full border rounded px-1 py-0.5"
+                                defaultValue={muscParams.load}
+                                onBlur={(e) => muscParams.load = e.target.value}
+                              />
+                            </label>
+                            <label className="col-span-1 flex items-center gap-1">Descanso
+                              <input
+                                className="w-full border rounded px-1 py-0.5"
+                                defaultValue={muscParams.rest}
+                                onBlur={(e) => muscParams.rest = e.target.value}
+                              />
+                            </label>
+                          </div>
+                          <div className="mt-1">
+                            <textarea
+                              className="w-full border rounded px-2 py-1"
+                              rows={2}
+                              defaultValue={muscParams.notes}
+                              onBlur={(e) => muscParams.notes = e.target.value}
+                              placeholder="Notas do exercício"
+                            />
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              className="bg-blue-600 text-white px-3 py-1 rounded"
+                              disabled={savingId === ex.id}
+                              onClick={() => handleSave(ex, muscParams)}
+                            >
+                              {savingId === ex.id ? 'Salvando...' : 'Salvar ajustes'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {s.exercises.length === 0 && <p className="text-xs text-slate-500">Nenhum exercício nesta sessão.</p>}
+              </div>
+            </div>
+          ))}
+          {agenda.length === 0 && <p className="text-sm text-slate-500">Nenhuma sessão para o filtro selecionado.</p>}
+        </div>
+      </SectionCard>
+    </AppShell>
+  );
+}
+
