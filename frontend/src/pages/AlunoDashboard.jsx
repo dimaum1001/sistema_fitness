@@ -168,7 +168,7 @@ export default function AlunoDashboard() {
             {s.notes && <p className="text-xs text-slate-500 mt-1 whitespace-pre-line">{s.notes}</p>}
           </div>
           <button
-            className="bg-blue-600 text-white px-3 py-1 rounded text-xs"
+            className="bg-blue-600 text-white px-3 py-2 sm:py-1 rounded text-sm sm:text-xs"
             onClick={() => startSession(s)}
           >
             {isActive ? 'Reiniciar' : 'Iniciar sessao'}
@@ -236,7 +236,7 @@ export default function AlunoDashboard() {
                           <span>Ultimo treino disponivel para este exercicio.</span>
                           <button
                             type="button"
-                            className="text-blue-600 underline text-xs"
+                            className="text-blue-600 underline text-sm sm:text-xs"
                             onClick={() => applyLastPerformed(currentExercise)}
                           >
                             Carregar ultimo treino
@@ -279,9 +279,9 @@ export default function AlunoDashboard() {
                   );
                 })()}
 
-                <div className="flex justify-end gap-2 text-xs">
+                <div className="flex justify-end gap-2 text-sm sm:text-xs">
                     <button
-                      className="bg-emerald-600 text-white px-3 py-1 rounded"
+                      className="bg-emerald-600 text-white px-3 py-2 sm:py-1 rounded"
                       onClick={() => finishExercise(s, currentExercise)}
                       disabled={savingExecution}
                     >
@@ -746,10 +746,11 @@ export default function AlunoDashboard() {
         }
       >
         {treinoDoDia ? (
-          <div className="border rounded-lg p-3 bg-slate-50">
-            <p className="text-xs uppercase text-slate-500">Treino {treinoDoDia.sequence || '?'}</p>
-            <p className="text-xl font-semibold text-slate-900">{treinoDoDia.name}</p>
-            <p className="text-sm text-slate-600 mt-1">{treinoDoDia.notes || 'Sem observacoes.'}</p>
+          <div className="mt-4 space-y-2">
+            <p className="text-xs uppercase text-slate-500">Treino selecionado</p>
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-2">
+              {renderSessionCard(treinoDoDia)}
+            </div>
           </div>
         ) : (
           <p className="text-sm text-slate-500">Nenhuma sessao disponivel.</p>
@@ -798,7 +799,7 @@ export default function AlunoDashboard() {
             </select>
             <button
               type="button"
-              className="text-xs text-blue-600 underline"
+              className="text-sm sm:text-xs text-blue-600 underline"
               onClick={loadHistory}
               disabled={historyLoading}
             >

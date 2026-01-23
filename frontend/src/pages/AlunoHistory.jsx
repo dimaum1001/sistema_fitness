@@ -74,7 +74,7 @@ export default function AlunoHistory() {
 
       <SectionCard title="Evolução de cargas e repetições">
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm min-w-[720px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
                 <th className="py-2">Exercício</th>
@@ -128,7 +128,7 @@ export default function AlunoHistory() {
 
       <SectionCard title="Execuções">
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm min-w-[720px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
                 <th className="py-2">Sessão</th>

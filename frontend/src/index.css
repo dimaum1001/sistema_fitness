@@ -6,3 +6,15 @@ body {
   @apply bg-slate-50 text-slate-900;
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
+
+@layer base {
+  @media (max-width: 640px) {
+    input.text-sm,
+    select.text-sm,
+    textarea.text-sm,
+    button.text-sm {
+      font-size: 1rem;
+      line-height: 1.5rem;
+    }
+  }
+}

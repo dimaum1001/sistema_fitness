@@ -96,7 +96,7 @@ export default function ProfessorStudents() {
         description="Lista filtrada pelo professor logado."
       >
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm min-w-[520px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
                 <th className="py-2">ID</th>

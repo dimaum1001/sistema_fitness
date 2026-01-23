@@ -163,7 +163,7 @@ export default function ProfessorReports() {
         description="Resumo do melhor/último registro (máximo por sessão) de carga e repetições por exercício."
       >
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm min-w-[760px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
                 <th className="py-2">Exercício</th>
@@ -219,7 +219,7 @@ export default function ProfessorReports() {
 
       <SectionCard title="Histórico do aluno">
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm min-w-[760px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
                 <th className="py-2">Execução ID</th>

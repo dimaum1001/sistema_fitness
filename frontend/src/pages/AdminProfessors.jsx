@@ -118,7 +118,7 @@ export default function AdminProfessors() {
       >
         {listError && <p className="text-red-600 text-sm mb-2">{listError}</p>}
         <div className="overflow-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm min-w-[520px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
                 <th className="py-2">ID</th>

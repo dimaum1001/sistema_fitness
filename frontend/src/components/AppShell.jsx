@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -7,7 +8,7 @@ function NavLink({ to, label }) {
   return (
     <Link
       to={to}
-      className={`px-3 py-1 rounded text-sm font-medium ${active ? 'bg-white text-blue-700 shadow' : 'text-white/90 hover:bg-white/10'}`}
+      className={`w-full sm:w-auto px-3 py-2 sm:py-1 rounded text-base sm:text-sm font-medium text-left ${active ? 'bg-white text-blue-700 shadow' : 'text-white/90 hover:bg-white/10'}`}
     >
       {label}
     </Link>
@@ -16,12 +17,18 @@ function NavLink({ to, label }) {
 
 export default function AppShell({ children }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-gradient-to-r from-blue-700 to-cyan-600 text-white shadow">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <div className="font-semibold text-lg">Sistema Fitness Total</div>
             {user && (
@@ -31,7 +38,21 @@ export default function AppShell({ children }) {
             )}
           </div>
           {user && (
-            <nav className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="sm:hidden px-3 py-2 rounded bg-white/15 text-white text-sm font-semibold"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-controls="primary-navigation"
+              aria-expanded={menuOpen}
+            >
+              {menuOpen ? 'Fechar' : 'Menu'}
+            </button>
+          )}
+          {user && (
+            <nav
+              id="primary-navigation"
+              className={`w-full sm:w-auto ${menuOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row items-stretch sm:items-center gap-2`}
+            >
               {user.type === 'ADMIN' ? (
                 <>
                   <NavLink to="/admin/professores" label="Professores" />
@@ -59,7 +80,7 @@ export default function AppShell({ children }) {
                   logout();
                   navigate('/login');
                 }}
-                className="px-3 py-1 rounded bg-white text-blue-700 text-sm font-semibold shadow"
+                className="w-full sm:w-auto px-3 py-2 sm:py-1 rounded bg-white text-blue-700 text-base sm:text-sm font-semibold shadow text-left"
               >
                 Sair
               </button>
@@ -67,7 +88,7 @@ export default function AppShell({ children }) {
           )}
         </div>
       </header>
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+      <main className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6">{children}</main>
     </div>
   );
 }
