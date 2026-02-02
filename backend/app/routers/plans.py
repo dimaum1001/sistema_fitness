@@ -72,20 +72,19 @@ def create_plan(payload: TrainingPlanCreate, db: Session = Depends(get_db), curr
     return plan
 
 
-@router.delete("/{plan_id}", status_code=204)
-def delete_plan(plan_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    if current.type != UserType.PROFESSOR:
-        raise HTTPException(status_code=403, detail="Apenas professor pode excluir planos")
+def _ensure_professor_owns_plan(db: Session, plan_id: int, professor_id: int) -> TrainingPlan:
     plan = db.get(TrainingPlan, plan_id)
     if not plan:
-        raise HTTPException(status_code=404, detail="Plano não encontrado")
+        raise HTTPException(status_code=404, detail="Plano nao encontrado")
     student = db.get(Student, plan.student_id)
-    if not student or student.professor_id != current.id:
-        raise HTTPException(status_code=403, detail="Plano não pertence a este professor")
+    if not student or student.professor_id != professor_id:
+        raise HTTPException(status_code=403, detail="Plano nao pertence a este professor")
+    return plan
 
-    # Em vez de apagar (o que quebraria histórico e referências), apenas arquivamos.
-    # A ficha "ativa" é filtrada por *_meta.active == True (ou ausência de meta = ainda ativo).
-    now = datetime.utcnow()
+
+def _archive_plan(db: Session, plan_id: int, now: datetime) -> None:
+    # Em vez de apagar (o que quebraria historico e referencias), apenas arquivamos.
+    # A ficha ativa e filtrada por *_meta.active == True (ou ausencia de meta = ainda ativo).
     plan_meta = db.get(TrainingPlanMeta, plan_id)
     if not plan_meta:
         plan_meta = TrainingPlanMeta(plan_id=plan_id, active=False, archived_at=now)
@@ -94,7 +93,7 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db), current: User = Dep
         plan_meta.archived_at = now
     db.add(plan_meta)
 
-    # Arquiva também todas as sessões e exercícios daquela ficha.
+    # Arquiva tambem todas as sessoes e exercicios daquela ficha.
     sessions = db.query(TrainingSession).filter_by(plan_id=plan_id).all()
     for sess in sessions:
         sess_meta = db.get(TrainingSessionMeta, sess.id)
@@ -114,28 +113,75 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db), current: User = Dep
                 item_meta.active = False
                 item_meta.archived_at = now
             db.add(item_meta)
+
+
+@router.patch("/{plan_id}/desativar", status_code=204)
+def deactivate_plan(plan_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    if current.type != UserType.PROFESSOR:
+        raise HTTPException(status_code=403, detail="Apenas professor pode desativar planos")
+    _ensure_professor_owns_plan(db, plan_id, current.id)
+    _archive_plan(db, plan_id, datetime.utcnow())
     db.commit()
     return JSONResponse(status_code=204, content=None)
 
 
-@router.get("/aluno/{student_id}/planos", response_model=List[TrainingPlanOut])
-def list_plans(student_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
-    student = db.get(Student, student_id)
-    if not student:
-        raise HTTPException(status_code=404, detail="Aluno não encontrado")
-    if current.type == UserType.PROFESSOR and student.professor_id != current.id:
-        raise HTTPException(status_code=403, detail="Aluno não pertence a este professor")
-    if current.type == UserType.ALUNO and current.id != student.user_id:
-        raise HTTPException(status_code=403, detail="Acesso negado a planos de outro aluno")
-    # Lista somente planos ativos (não arquivados). Mantemos histórico no banco, mas não exibimos na ficha atual.
-    return (
-        db.query(TrainingPlan)
+@router.delete("/{plan_id}", status_code=204)
+def delete_plan(plan_id: int, db: Session = Depends(get_db), current: User = Depends(get_current_user)):
+    if current.type != UserType.PROFESSOR:
+        raise HTTPException(status_code=403, detail="Apenas professor pode excluir planos")
+    _ensure_professor_owns_plan(db, plan_id, current.id)
+    _archive_plan(db, plan_id, datetime.utcnow())
+    db.commit()
+    return JSONResponse(status_code=204, content=None)
+
+
+def _list_student_plans(db: Session, student_id: int, include_inactive: bool = False) -> List[TrainingPlan]:
+    query = (
+        db.query(TrainingPlan, TrainingPlanMeta.active, TrainingPlanMeta.archived_at)
         .outerjoin(TrainingPlanMeta, TrainingPlanMeta.plan_id == TrainingPlan.id)
         .filter(TrainingPlan.student_id == student_id)
-        .filter(or_(TrainingPlanMeta.active.is_(None), TrainingPlanMeta.active.is_(True)))
-        .order_by(TrainingPlan.id.desc())
-        .all()
     )
+    if not include_inactive:
+        # Por padrao mantemos apenas os planos ativos da ficha atual.
+        query = query.filter(or_(TrainingPlanMeta.active.is_(None), TrainingPlanMeta.active.is_(True)))
+    rows = query.order_by(TrainingPlan.id.desc()).all()
+    plans: List[TrainingPlan] = []
+    for plan, active_flag, archived_at in rows:
+        plan.active = True if active_flag is None else bool(active_flag)
+        plan.archived_at = archived_at
+        plans.append(plan)
+    return plans
+
+
+@router.get("/aluno/me/planos", response_model=List[TrainingPlanOut])
+def list_my_plans(
+    include_inactive: bool = True,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    if current.type != UserType.ALUNO:
+        raise HTTPException(status_code=403, detail="Apenas aluno pode listar os proprios planos")
+    student = db.query(Student).filter_by(user_id=current.id).first()
+    if not student:
+        return []
+    return _list_student_plans(db, student.id, include_inactive=include_inactive)
+
+
+@router.get("/aluno/{student_id}/planos", response_model=List[TrainingPlanOut])
+def list_plans(
+    student_id: int,
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    student = db.get(Student, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Aluno nao encontrado")
+    if current.type == UserType.PROFESSOR and student.professor_id != current.id:
+        raise HTTPException(status_code=403, detail="Aluno nao pertence a este professor")
+    if current.type == UserType.ALUNO and current.id != student.user_id:
+        raise HTTPException(status_code=403, detail="Acesso negado a planos de outro aluno")
+    return _list_student_plans(db, student.id, include_inactive=include_inactive)
 
 
 @router.post("/sessao", response_model=TrainingSessionOut)

@@ -65,7 +65,18 @@ export const deleteExercise = (id) =>
 // --- Training plans & sessions ---
 export const createPlan = (payload) =>
   request('/planos', { method: 'POST', body: JSON.stringify(payload) });
-export const listPlans = (studentId) => request(`/planos/aluno/${studentId}/planos`);
+export const listPlans = (studentId, options = {}) => {
+  const params = new URLSearchParams();
+  if (options.includeInactive) params.append('include_inactive', 'true');
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return request(`/planos/aluno/${studentId}/planos${qs}`);
+};
+export const listMyPlans = (options = {}) => {
+  const params = new URLSearchParams();
+  if (options.includeInactive !== false) params.append('include_inactive', 'true');
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return request(`/planos/aluno/me/planos${qs}`);
+};
 export const createSession = (payload) =>
   request('/planos/sessao', { method: 'POST', body: JSON.stringify(payload) });
 export const listSessions = (planId) => request(`/planos/sessao/${planId}`);
@@ -89,6 +100,8 @@ export const deleteSessionExercise = (itemId) =>
   request(`/planos/sessao/exercicios/${itemId}`, { method: 'DELETE' });
 export const deleteSession = (sessionId) =>
   request(`/planos/sessao/${sessionId}`, { method: 'DELETE' });
+export const deactivatePlan = (planId) =>
+  request(`/planos/${planId}/desativar`, { method: 'PATCH' });
 export const deletePlan = (planId) =>
   request(`/planos/${planId}`, { method: 'DELETE' });
 

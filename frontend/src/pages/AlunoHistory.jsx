@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import AppShell from '../components/AppShell.jsx';
 import SectionCard from '../components/SectionCard.jsx';
 import StrengthHistoryChart from '../components/StrengthHistoryChart.jsx';
-import { getMyEvolution, listMyExecutions } from '../api/client.js';
+import { getMyEvolution, listMyExecutions, listMyPlans } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function AlunoHistory() {
   const { user } = useAuth();
   const [executions, setExecutions] = useState([]);
   const [evolution, setEvolution] = useState([]);
+  const [plans, setPlans] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -32,14 +33,16 @@ export default function AlunoHistory() {
     setError('');
     setLoading(true);
     try {
-      const [data, evo] = await Promise.all([
+      const [data, evo, myPlans] = await Promise.all([
         listMyExecutions(),
         getMyEvolution(),
+        listMyPlans({ includeInactive: true }),
       ]);
       setExecutions(data);
       setEvolution(evo);
-    } catch (err) {
-      setError('Não foi possível carregar seu histórico.');
+      setPlans(myPlans || []);
+    } catch {
+      setError('Nao foi possivel carregar seu historico.');
     } finally {
       setLoading(false);
     }
@@ -49,17 +52,19 @@ export default function AlunoHistory() {
     fetchHistory();
   }, []);
 
+  const archivedPlans = plans.filter((plan) => plan?.active === false);
+
   return (
     <AppShell>
       <div className="mb-4">
-        <p className="text-xs text-slate-500 uppercase tracking-wide">Histórico</p>
-        <h1 className="text-2xl font-bold text-slate-900">Minhas execuções</h1>
-        <p className="text-sm text-slate-600">Acompanhe suas sessões registradas. Olá, {user?.name || 'aluno'}.</p>
+        <p className="text-xs text-slate-500 uppercase tracking-wide">Historico</p>
+        <h1 className="text-2xl font-bold text-slate-900">Minhas execucoes</h1>
+        <p className="text-sm text-slate-600">Acompanhe suas sessoes registradas. Ola, {user?.name || 'aluno'}.</p>
       </div>
 
       <SectionCard
         title="Atualizar"
-        actions={
+        actions={(
           <button
             onClick={fetchHistory}
             className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-semibold w-full sm:w-auto"
@@ -67,21 +72,21 @@ export default function AlunoHistory() {
           >
             {loading ? 'Carregando...' : 'Atualizar'}
           </button>
-        }
+        )}
       >
         {error && <span className="text-red-600 text-sm">{error}</span>}
       </SectionCard>
 
-      <SectionCard title="Evolução de cargas e repetições">
+      <SectionCard title="Evolucao de cargas e repeticoes">
         <div className="overflow-auto">
           <table className="w-full text-xs sm:text-sm min-w-[720px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
-                <th className="py-2">Exercício</th>
-                <th>Último</th>
+                <th className="py-2">Exercicio</th>
+                <th>Ultimo</th>
                 <th>Melhor</th>
-                <th>Δ</th>
-                <th>Execuções</th>
+                <th>D</th>
+                <th>Execucoes</th>
                 <th>Data</th>
               </tr>
             </thead>
@@ -111,7 +116,7 @@ export default function AlunoHistory() {
               {evolution.length === 0 && (
                 <tr>
                   <td colSpan={6} className="text-sm text-slate-500 py-3">
-                    Sem dados de carga/repetições.
+                    Sem dados de carga/repeticoes.
                   </td>
                 </tr>
               )}
@@ -126,45 +131,84 @@ export default function AlunoHistory() {
         description="Selecione um exercicio de musculacao para ver a tendencia de carga e reps."
       />
 
-      <SectionCard title="Execuções">
+      <SectionCard title="Historico de planos">
+        <div className="overflow-auto">
+          <table className="w-full text-xs sm:text-sm min-w-[640px]">
+            <thead>
+              <tr className="text-left text-slate-500 uppercase text-xs">
+                <th className="py-2">Plano</th>
+                <th>Objetivo</th>
+                <th>Inicio</th>
+                <th>Fim</th>
+                <th>Desativado em</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {archivedPlans.map((plan) => (
+                <tr key={plan.id} className="border-b">
+                  <td className="py-2">{plan.name}</td>
+                  <td>{plan.goal || '-'}</td>
+                  <td>{plan.start_date?.slice(0, 10) || '-'}</td>
+                  <td>{plan.end_date?.slice(0, 10) || '-'}</td>
+                  <td>
+                    {plan.archived_at?.slice(0, 10) || '-'}
+                  </td>
+                  <td>
+                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[11px] font-semibold">
+                      Desativado
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {archivedPlans.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-sm text-slate-500 py-3">
+                    Nenhum plano desativado no historico.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Execucoes">
         <div className="overflow-auto">
           <table className="w-full text-xs sm:text-sm min-w-[720px]">
             <thead>
               <tr className="text-left text-slate-500 uppercase text-xs">
-                <th className="py-2">Sessão</th>
-                <th>Exercícios</th>
+                <th className="py-2">Sessao</th>
+                <th>Exercicios</th>
                 <th>Status</th>
                 <th>RPE</th>
-                <th>Comentário</th>
+                <th>Comentario</th>
                 <th>Data</th>
               </tr>
             </thead>
             <tbody>
               {executions.map((e) => (
                 <tr key={e.id} className="border-b">
-                  <td className="py-2">{e.session_name || `Sessão ${e.session_id}`}</td>
+                  <td className="py-2">{e.session_name || `Sessao ${e.session_id}`}</td>
                   <td className="py-2 text-xs text-slate-700">
                     {e.exercises && e.exercises.length > 0 ? (
                       <details>
                         <summary className="cursor-pointer text-blue-700">
-                          Ver exercícios ({e.exercises.length})
+                          Ver exercicios ({e.exercises.length})
                         </summary>
                         <div className="mt-2 space-y-1">
                           {[...e.exercises]
                             .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
                             .map((ex) => {
                               const details = Array.isArray(ex.performed?.set_details) ? ex.performed.set_details : [];
-                              const line =
-                                details.length > 0
-                                  ? details
-                                      .map((row) => `${row.reps || '?'}x${row.load || '?'}`)
-                                      .join(' · ')
-                                  : '-';
+                              const line = details.length > 0
+                                ? details.map((row) => `${row.reps || '?'}x${row.load || '?'}`).join(' - ')
+                                : '-';
                               return (
                                 <div key={`${e.id}-${ex.id}`} className="text-[11px] text-slate-700">
                                   {ex.order || '?'}. <span className="font-semibold">{ex.name}</span>{' '}
                                   <span className="text-slate-500">({ex.type})</span>{' '}
-                                  <span className="text-slate-600">→ {line}</span>
+                                  <span className="text-slate-600">{'->'} {line}</span>
                                 </div>
                               );
                             })}
@@ -183,7 +227,7 @@ export default function AlunoHistory() {
               {executions.length === 0 && (
                 <tr>
                   <td colSpan={6} className="text-sm text-slate-500 py-3">
-                    Nenhuma execução encontrada.
+                    Nenhuma execucao encontrada.
                   </td>
                 </tr>
               )}

@@ -95,6 +95,8 @@ class TrainingPlanCreate(TrainingPlanBase):
 
 class TrainingPlanOut(TrainingPlanBase):
     id: int
+    active: bool = True
+    archived_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 

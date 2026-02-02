@@ -32,6 +32,19 @@ const resolveSessionType = (value) => {
   return 'OUTRO';
 };
 
+const hasMeaningfulValue = (value) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  return true;
+};
+
+const resolvePerformedValue = (primary, secondary, fallback) => {
+  if (hasMeaningfulValue(primary)) return primary;
+  if (hasMeaningfulValue(secondary)) return secondary;
+  if (hasMeaningfulValue(fallback)) return fallback;
+  return '';
+};
+
 export default function AlunoDashboard() {
   const { user } = useAuth();
   const [agenda, setAgenda] = useState([]);
@@ -216,7 +229,15 @@ export default function AlunoDashboard() {
                 {(() => {
                   const isEndurance = currentExercise.exercise.type === 'CORRIDA' || currentExercise.exercise.type === 'PEDAL';
                   const lastPerformed = lastByExercise[currentExercise.exercise?.id];
-                  const hasLastPerformed = Array.isArray(lastPerformed?.performed?.set_details);
+                  const performed = lastPerformed?.performed;
+                  const hasLastPerformed =
+                    performed
+                    && typeof performed === 'object'
+                    && (
+                      (Array.isArray(performed.set_details) && performed.set_details.length > 0)
+                      || hasMeaningfulValue(performed.load)
+                      || hasMeaningfulValue(performed.reps)
+                    );
                   if (isEndurance) {
                     return (
                       <div className="space-y-2 text-[11px] text-slate-700">
@@ -495,7 +516,7 @@ export default function AlunoDashboard() {
     return [];
   }
 
-  function mergeSetDetails(planned, performed) {
+  function mergeSetDetails(planned, performed, fallback = {}) {
     const plannedArr = Array.isArray(planned) ? planned : [];
     const performedArr = Array.isArray(performed) ? performed : [];
     const targetLen = plannedArr.length || performedArr.length || 0;
@@ -503,7 +524,10 @@ export default function AlunoDashboard() {
     for (let i = 0; i < targetLen; i += 1) {
       const p = plannedArr[i] || {};
       const q = performedArr[i] || {};
-      merged.push({ ...p, ...q });
+      const next = { ...p, ...q };
+      next.reps = resolvePerformedValue(q.reps, fallback.reps, p.reps);
+      next.load = resolvePerformedValue(q.load, fallback.load, p.load);
+      merged.push(next);
     }
     return merged;
   }
@@ -513,18 +537,22 @@ export default function AlunoDashboard() {
     const exerciseId = exercise.exercise?.id;
     if (!exerciseId) return;
     const lastPerformed = lastByExercise[exerciseId];
-    const performedDetails = Array.isArray(lastPerformed?.performed?.set_details)
-      ? lastPerformed.performed.set_details
+    const performed = lastPerformed?.performed && typeof lastPerformed.performed === 'object'
+      ? lastPerformed.performed
+      : {};
+    const performedDetails = Array.isArray(performed?.set_details)
+      ? performed.set_details
       : [];
     const planned = buildSets(exercise);
+    const fallback = { reps: performed?.reps, load: performed?.load };
     let lines = [];
-    if (performedDetails.length && planned.length) {
-      lines = mergeSetDetails(planned, performedDetails);
-    } else if (performedDetails.length) {
-      lines = performedDetails.map((row) => ({
-        reps: row?.reps ?? '',
-        load: row?.load ?? '',
-      }));
+    if (performedDetails.length || planned.length) {
+      lines = mergeSetDetails(planned, performedDetails, fallback);
+    } else if (hasMeaningfulValue(fallback.reps) || hasMeaningfulValue(fallback.load)) {
+      lines = [{
+        reps: resolvePerformedValue(fallback.reps),
+        load: resolvePerformedValue(fallback.load),
+      }];
     } else {
       lines = planned;
     }

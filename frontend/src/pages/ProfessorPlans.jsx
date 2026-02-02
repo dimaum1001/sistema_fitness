@@ -7,7 +7,7 @@ import {
   copySessionExercises,
   createPlan,
   createSession,
-  deletePlan,
+  deactivatePlan,
   deleteSession,
   deleteSessionExercise,
   getExercises,
@@ -235,12 +235,14 @@ export default function ProfessorPlans() {
   const [students, setStudents] = useState([]);
   const [studentId, setStudentId] = useState('');
   const [plans, setPlans] = useState([]);
+  const [archivedPlans, setArchivedPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [sessionExercises, setSessionExercises] = useState([]);
   const [exerciseOptions, setExerciseOptions] = useState([]);
   const [exerciseSearch, setExerciseSearch] = useState('');
+  const [exerciseQuery, setExerciseQuery] = useState('');
   const [bulkSelection, setBulkSelection] = useState([]);
   const [showExerciseBuilder, setShowExerciseBuilder] = useState(false);
   const [bulkParams, setBulkParams] = useState({
@@ -340,21 +342,48 @@ export default function ProfessorPlans() {
       params: createEmptyParams(),
       notes: '',
     });
+    setExerciseQuery('');
     setEditingExerciseId(null);
   }
 
   function startEditExercise(item) {
     if (!item) return;
+    const selected = exerciseOptions.find((ex) => ex.id === Number(item.exercise_id));
     setSessionExerciseForm({
       exercise_id: String(item.exercise_id || ''),
       order: item.order || 1,
       params: normalizeParams(item.params || {}),
       notes: item.notes || '',
     });
+    setExerciseQuery(selected?.name || '');
     setEditingExerciseId(item.id);
     setShowExerciseBuilder(true);
     setError('');
     setMessage('');
+  }
+
+  function normalizeText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  function findBestExerciseMatch(query, options) {
+    const term = normalizeText(query);
+    if (!term) return null;
+    const exactName = options.find((ex) => normalizeText(ex.name) === term);
+    if (exactName) return exactName;
+    const startsName = options.find((ex) => normalizeText(ex.name).startsWith(term));
+    if (startsName) return startsName;
+    const startsGroup = options.find((ex) => normalizeText(ex.group || '').startsWith(term));
+    if (startsGroup) return startsGroup;
+    const containsName = options.find((ex) => normalizeText(ex.name).includes(term));
+    if (containsName) return containsName;
+    const containsGroup = options.find((ex) => normalizeText(ex.group || '').includes(term));
+    if (containsGroup) return containsGroup;
+    return null;
   }
 
   function updateSetDetail(index, field, value) {
@@ -435,11 +464,23 @@ export default function ProfessorPlans() {
     getExercises().then(setExerciseOptions).catch(() => setExerciseOptions([]));
   }, []);
 
+  function splitPlansByStatus(items) {
+    const active = [];
+    const archived = [];
+    (items || []).forEach((plan) => {
+      if (plan?.active === false) archived.push(plan);
+      else active.push(plan);
+    });
+    return { active, archived };
+  }
+
   async function loadPlans() {
     if (!studentId) return;
     try {
-      const data = await listPlans(studentId);
-      setPlans(data);
+      const data = await listPlans(studentId, { includeInactive: true });
+      const { active, archived } = splitPlansByStatus(data);
+      setPlans(active);
+      setArchivedPlans(archived);
       setSelectedPlan(null);
       setSessions([]);
       setSelectedSession(null);
@@ -575,6 +616,30 @@ export default function ProfessorPlans() {
       setMessage('Sessao criada.');
     } catch {
       setError('Erro ao criar sessao.');
+    }
+  }
+
+  async function handleDeactivatePlan(plan) {
+    if (!plan) return;
+    const confirmDeactivate = window.confirm(`Desativar o plano "${plan.name}"?`);
+    if (!confirmDeactivate) return;
+    setError('');
+    setMessage('');
+    try {
+      await deactivatePlan(plan.id);
+      const refreshed = await listPlans(studentId, { includeInactive: true });
+      const { active, archived } = splitPlansByStatus(refreshed);
+      setPlans(active);
+      setArchivedPlans(archived);
+      if (selectedPlan?.id === plan.id) {
+        setSelectedPlan(null);
+        setSessions([]);
+        setSelectedSession(null);
+        setSessionExercises([]);
+      }
+      setMessage('Plano desativado e movido para o historico.');
+    } catch {
+      setError('Erro ao desativar plano.');
     }
   }
 
@@ -722,6 +787,19 @@ export default function ProfessorPlans() {
         : [editingExerciseOption, ...filteredExerciseOptions]
     )
     : filteredExerciseOptions;
+  const exerciseQuickSuggestions = useMemo(() => {
+    const base = visibleExerciseOptions.slice(0, 8);
+    if (!exerciseQuery) return base;
+    const term = normalizeText(exerciseQuery);
+    const ranked = [...visibleExerciseOptions].sort((a, b) => {
+      const aName = normalizeText(a.name);
+      const bName = normalizeText(b.name);
+      const aScore = aName === term ? 0 : aName.startsWith(term) ? 1 : aName.includes(term) ? 2 : 3;
+      const bScore = bName === term ? 0 : bName.startsWith(term) ? 1 : bName.includes(term) ? 2 : 3;
+      return aScore - bScore;
+    });
+    return ranked.slice(0, 8);
+  }, [visibleExerciseOptions, exerciseQuery]);
   const workoutTypeLabel = (value) => {
     if (!value) return '';
     const found = ENDURANCE_WORKOUT_TYPES.find((option) => option.value === value);
@@ -814,7 +892,7 @@ export default function ProfessorPlans() {
         </form>
       </SectionCard>
 
-      <SectionCard title="Planos do aluno" description="Selecione um plano para gerenciar sessoes.">
+      <SectionCard title="Planos ativos do aluno" description="Selecione um plano ativo para gerenciar sessoes.">
         <div className="grid md:grid-cols-2 gap-3">
           {plans.map((plan) => (
             <div key={plan.id} className={`border rounded-lg p-3 ${selectedPlan?.id === plan.id ? 'border-blue-500 shadow' : ''}`}>
@@ -825,25 +903,10 @@ export default function ProfessorPlans() {
                   <p className="text-[11px] text-slate-500 mt-1">{plan.start_date?.slice(0, 10)}  -  {plan.end_date ? plan.end_date.slice(0, 10) : 'Sem fim'}</p>
                 </div>
                 <button
-                  className="text-xs text-red-600 underline"
-                  onClick={async () => {
-                    setError('');
-                    setMessage('');
-                    try {
-                      await deletePlan(plan.id);
-                      const refreshed = await listPlans(studentId);
-                      setPlans(refreshed);
-                      setSelectedPlan(null);
-                      setSessions([]);
-                      setSelectedSession(null);
-                      setSessionExercises([]);
-                      setMessage('Plano excluido.');
-                    } catch {
-                      setError('Erro ao excluir plano.');
-                    }
-                  }}
+                  className="text-xs text-amber-700 underline"
+                  onClick={() => handleDeactivatePlan(plan)}
                 >
-                  Excluir
+                  Desativar
                 </button>
               </div>
               <div className="mt-2 text-right">
@@ -857,6 +920,24 @@ export default function ProfessorPlans() {
             </div>
           ))}
           {plans.length === 0 && <p className="text-sm text-slate-500">Nenhum plano para este aluno.</p>}
+        </div>
+      </SectionCard>
+      <SectionCard title="Historico de planos desativados" description="Planos desativados ficam salvos para consulta.">
+        <div className="grid md:grid-cols-2 gap-3">
+          {archivedPlans.map((plan) => (
+            <div key={plan.id} className="border rounded-lg p-3 bg-slate-50">
+              <div className="flex justify-between items-start gap-2">
+                <div className="text-left">
+                  <p className="font-semibold text-slate-800">{plan.name}</p>
+                  <p className="text-xs text-slate-500">{plan.goal || 'Sem objetivo definido'}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">{plan.start_date?.slice(0, 10)}  -  {plan.end_date ? plan.end_date.slice(0, 10) : 'Sem fim'}</p>
+                  <p className="text-[11px] text-slate-500">Desativado em: {plan.archived_at?.slice(0, 10) || '-'}</p>
+                </div>
+                <span className="text-[11px] px-2 py-1 rounded bg-amber-100 text-amber-800 font-semibold">Desativado</span>
+              </div>
+            </div>
+          ))}
+          {archivedPlans.length === 0 && <p className="text-sm text-slate-500">Nenhum plano desativado para este aluno.</p>}
         </div>
       </SectionCard>
       {selectedPlan && (
@@ -1319,10 +1400,48 @@ export default function ProfessorPlans() {
                 >
                   <div>
                     <label className="block text-sm font-medium mb-1">Exercicio</label>
+                    <input
+                      className="w-full border rounded px-3 py-2 text-sm mb-2"
+                      placeholder="Digite para encontrar (ex: supino, agachamento, corrida...)"
+                      value={exerciseQuery}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setExerciseQuery(value);
+                        const match = findBestExerciseMatch(value, visibleExerciseOptions);
+                        setSessionExerciseForm((prev) => ({
+                          ...prev,
+                          exercise_id: match ? String(match.id) : '',
+                        }));
+                      }}
+                      disabled={Boolean(editingExerciseId)}
+                    />
+                    {exerciseQuickSuggestions.length > 0 && !editingExerciseId && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {exerciseQuickSuggestions.map((ex) => (
+                          <button
+                            key={ex.id}
+                            type="button"
+                            className="text-xs px-2 py-1 rounded border bg-slate-50 hover:bg-slate-100"
+                            onClick={() => {
+                              setExerciseQuery(ex.name);
+                              setSessionExerciseForm((prev) => ({ ...prev, exercise_id: String(ex.id) }));
+                            }}
+                          >
+                            {ex.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <select
                       className="w-full border rounded px-3 py-2 text-sm"
                       value={sessionExerciseForm.exercise_id}
-                      onChange={(e) => setSessionExerciseForm({ ...sessionExerciseForm, exercise_id: e.target.value })}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const picked = visibleExerciseOptions.find((ex) => String(ex.id) === value);
+                        setSessionExerciseForm({ ...sessionExerciseForm, exercise_id: value });
+                        if (picked) setExerciseQuery(picked.name);
+                        if (!value) setExerciseQuery('');
+                      }}
                       disabled={Boolean(editingExerciseId)}
                     >
                       <option value="">Selecione</option>
