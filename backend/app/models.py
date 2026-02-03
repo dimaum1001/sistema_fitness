@@ -13,7 +13,7 @@ Para manter histórico, usamos "arquivamento" (soft delete) em vez de apagar reg
 
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Enum as SAEnum, ForeignKey, Text, JSON, Float
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -59,6 +59,53 @@ class Student(Base):
 
     user = relationship("User", foreign_keys=[user_id], back_populates="student")
     professor = relationship("User", foreign_keys=[professor_id])
+
+
+class StudentAssessment(Base):
+    __tablename__ = "student_assessments"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    professor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    evaluated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Dados gerais
+    weight_kg = Column(Float, nullable=True)
+    height_cm = Column(Float, nullable=True)
+    bmi = Column(Float, nullable=True)
+
+    # Composicao corporal
+    body_fat_percent = Column(Float, nullable=True)
+    muscle_mass_kg = Column(Float, nullable=True)
+    lean_mass_kg = Column(Float, nullable=True)
+    fat_mass_kg = Column(Float, nullable=True)
+    bone_mass_kg = Column(Float, nullable=True)
+    body_water_percent = Column(Float, nullable=True)
+    visceral_fat_level = Column(Float, nullable=True)
+    basal_metabolism_kcal = Column(Float, nullable=True)
+
+    # Antropometria
+    shoulder_cm = Column(Float, nullable=True)
+    chest_cm = Column(Float, nullable=True)
+    waist_cm = Column(Float, nullable=True)
+    abdomen_cm = Column(Float, nullable=True)
+    hip_cm = Column(Float, nullable=True)
+    neck_cm = Column(Float, nullable=True)
+    right_arm_relaxed_cm = Column(Float, nullable=True)
+    left_arm_relaxed_cm = Column(Float, nullable=True)
+    right_arm_flexed_cm = Column(Float, nullable=True)
+    left_arm_flexed_cm = Column(Float, nullable=True)
+    right_forearm_cm = Column(Float, nullable=True)
+    left_forearm_cm = Column(Float, nullable=True)
+    right_thigh_cm = Column(Float, nullable=True)
+    left_thigh_cm = Column(Float, nullable=True)
+    right_calf_cm = Column(Float, nullable=True)
+    left_calf_cm = Column(Float, nullable=True)
+
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    student = relationship("Student")
+    professor = relationship("User")
 
 class ExerciseType(str, Enum):
     MUSCULACAO = "MUSCULACAO"

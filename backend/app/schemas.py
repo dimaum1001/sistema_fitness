@@ -11,7 +11,7 @@ Por isso, `TrainingExecutionCreate` aceita `exercises` com `performed` (ex.: set
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from .models import UserType, ExerciseType, ExecutionStatus
 
@@ -237,6 +237,63 @@ class StudentOut(BaseModel):
     name: str
     email: EmailStr
     type: UserType
+
+
+class StudentAssessmentMetrics(BaseModel):
+    evaluated_at: Optional[datetime] = None
+
+    # Dados gerais
+    weight_kg: Optional[float] = Field(default=None, gt=0)
+    height_cm: Optional[float] = Field(default=None, gt=0)
+    bmi: Optional[float] = Field(default=None, gt=0)
+
+    # Composicao corporal
+    body_fat_percent: Optional[float] = Field(default=None, ge=0)
+    muscle_mass_kg: Optional[float] = Field(default=None, ge=0)
+    lean_mass_kg: Optional[float] = Field(default=None, ge=0)
+    fat_mass_kg: Optional[float] = Field(default=None, ge=0)
+    bone_mass_kg: Optional[float] = Field(default=None, ge=0)
+    body_water_percent: Optional[float] = Field(default=None, ge=0)
+    visceral_fat_level: Optional[float] = Field(default=None, ge=0)
+    basal_metabolism_kcal: Optional[float] = Field(default=None, ge=0)
+
+    # Antropometria
+    shoulder_cm: Optional[float] = Field(default=None, ge=0)
+    chest_cm: Optional[float] = Field(default=None, ge=0)
+    waist_cm: Optional[float] = Field(default=None, ge=0)
+    abdomen_cm: Optional[float] = Field(default=None, ge=0)
+    hip_cm: Optional[float] = Field(default=None, ge=0)
+    neck_cm: Optional[float] = Field(default=None, ge=0)
+    right_arm_relaxed_cm: Optional[float] = Field(default=None, ge=0)
+    left_arm_relaxed_cm: Optional[float] = Field(default=None, ge=0)
+    right_arm_flexed_cm: Optional[float] = Field(default=None, ge=0)
+    left_arm_flexed_cm: Optional[float] = Field(default=None, ge=0)
+    right_forearm_cm: Optional[float] = Field(default=None, ge=0)
+    left_forearm_cm: Optional[float] = Field(default=None, ge=0)
+    right_thigh_cm: Optional[float] = Field(default=None, ge=0)
+    left_thigh_cm: Optional[float] = Field(default=None, ge=0)
+    right_calf_cm: Optional[float] = Field(default=None, ge=0)
+    left_calf_cm: Optional[float] = Field(default=None, ge=0)
+
+    notes: Optional[str] = None
+
+
+class StudentAssessmentCreate(StudentAssessmentMetrics):
+    student_id: int
+
+
+class StudentAssessmentUpdate(StudentAssessmentMetrics):
+    pass
+
+
+class StudentAssessmentOut(StudentAssessmentMetrics):
+    id: int
+    student_id: int
+    professor_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class SessionExerciseDetail(BaseModel):

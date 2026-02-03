@@ -223,6 +223,27 @@ const TRAINING_BLOCKS = [
   { value: 'finalizacao', label: 'Finalizacao/metabolico' },
 ];
 
+const normalizeBisetGroup = (value) => String(value || '').trim().toUpperCase();
+
+const orderValue = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+function getNextBisetGroup(current) {
+  const normalized = normalizeBisetGroup(current).replace(/[^A-Z]/g, '');
+  if (!normalized) return 'A';
+  const chars = normalized.split('');
+  let idx = chars.length - 1;
+  while (idx >= 0 && chars[idx] === 'Z') {
+    chars[idx] = 'A';
+    idx -= 1;
+  }
+  if (idx < 0) chars.unshift('A');
+  else chars[idx] = String.fromCharCode(chars[idx].charCodeAt(0) + 1);
+  return chars.join('');
+}
+
 /**
  * Tela de planos/sessoes com foco em montar series detalhadas e gerenciar exercicios.
  * - Seleciona aluno vinculado.
@@ -269,6 +290,7 @@ export default function ProfessorPlans() {
       reps: '',
       load: '',
       rest: '',
+      biset_group: '',
       tempo: '',
       effort: '',
       block: '',
@@ -302,6 +324,7 @@ export default function ProfessorPlans() {
       reps: '',
       load: '',
       rest: '',
+      biset_group: '',
       tempo: '',
       effort: '',
       block: '',
@@ -407,6 +430,16 @@ export default function ProfessorPlans() {
       const next = current.filter((_, idx) => idx !== index);
       return { ...prev, params: { ...prev.params, set_details: next.length ? next : [{ reps: '', load: '' }] } };
     });
+  }
+
+  function applyFormBisetGroup(value) {
+    setSessionExerciseForm((prev) => ({
+      ...prev,
+      params: {
+        ...prev.params,
+        biset_group: normalizeBisetGroup(value),
+      },
+    }));
   }
 
   function applySessionTemplate(type) {
@@ -535,6 +568,63 @@ export default function ProfessorPlans() {
     const maxOrder = Math.max(...sessionExercises.map((ex) => Number(ex.order) || 0));
     return (maxOrder || 0) + 1;
   }, [sessionExercises]);
+
+  const bisetMetaByItemId = useMemo(() => {
+    const grouped = {};
+    const sorted = [...sessionExercises].sort(
+      (a, b) => orderValue(a.order) - orderValue(b.order) || (Number(a.id) || 0) - (Number(b.id) || 0),
+    );
+    sorted.forEach((item) => {
+      const group = normalizeBisetGroup(item?.params?.biset_group);
+      if (!group) return;
+      if (!grouped[group]) grouped[group] = [];
+      grouped[group].push(item);
+    });
+    const map = {};
+    Object.entries(grouped).forEach(([group, items]) => {
+      items.forEach((item, idx) => {
+        map[item.id] = {
+          group,
+          position: idx + 1,
+          total: items.length,
+          isLast: idx === items.length - 1,
+        };
+      });
+    });
+    return map;
+  }, [sessionExercises]);
+
+  const bisetGroups = useMemo(() => {
+    const groups = new Set();
+    sessionExercises.forEach((item) => {
+      const group = normalizeBisetGroup(item?.params?.biset_group);
+      if (group) groups.add(group);
+    });
+    return [...groups].sort();
+  }, [sessionExercises]);
+
+  const lastUsedBisetGroup = useMemo(() => {
+    const sorted = [...sessionExercises].sort(
+      (a, b) => orderValue(a.order) - orderValue(b.order) || (Number(a.id) || 0) - (Number(b.id) || 0),
+    );
+    for (let idx = sorted.length - 1; idx >= 0; idx -= 1) {
+      const group = normalizeBisetGroup(sorted[idx]?.params?.biset_group);
+      if (group) return group;
+    }
+    return '';
+  }, [sessionExercises]);
+
+  const suggestedBisetGroup = getNextBisetGroup(lastUsedBisetGroup);
+  const normalizedFormBisetGroup = normalizeBisetGroup(sessionExerciseForm.params?.biset_group);
+  const normalizedFormRest = String(sessionExerciseForm.params?.rest || '').trim();
+  const formOrder = orderValue(sessionExerciseForm.order || nextOrder || 1);
+  const groupItemsExcludingForm = useMemo(() => (
+    sessionExercises
+      .filter((item) => item.id !== editingExerciseId && normalizeBisetGroup(item?.params?.biset_group) === normalizedFormBisetGroup)
+      .sort((a, b) => orderValue(a.order) - orderValue(b.order) || (Number(a.id) || 0) - (Number(b.id) || 0))
+  ), [sessionExercises, editingExerciseId, normalizedFormBisetGroup]);
+  const hasLaterItemInGroup = groupItemsExcludingForm.some((item) => orderValue(item.order) > formOrder);
+  const formLikelyLastInGroup = Boolean(normalizedFormBisetGroup) && !hasLaterItemInGroup;
 
   useEffect(() => {
     setBulkSelection([]);
@@ -813,6 +903,7 @@ export default function ProfessorPlans() {
     }
     if (sessionExerciseForm.params.load) parts.push(`Carga: ${sessionExerciseForm.params.load}`);
     if (sessionExerciseForm.params.rest) parts.push(`Descanso: ${sessionExerciseForm.params.rest}`);
+    if (sessionExerciseForm.params.biset_group) parts.push(`Biset: ${sessionExerciseForm.params.biset_group}`);
     if (sessionExerciseForm.params.tempo) parts.push(`Tempo/cadencia: ${sessionExerciseForm.params.tempo}`);
     if (sessionExerciseForm.params.effort) parts.push(`Esforco: ${sessionExerciseForm.params.effort}`);
     if (sessionExerciseForm.params.block) parts.push(`Bloco: ${sessionExerciseForm.params.block}`);
@@ -1365,18 +1456,19 @@ export default function ProfessorPlans() {
                         : {
                             sets: sessionExerciseForm.params.sets || null,
                             reps: sessionExerciseForm.params.reps || null,
-                          load: sessionExerciseForm.params.load || null,
-                          rest: sessionExerciseForm.params.rest || null,
-                          notes: sessionExerciseForm.params.notes || null,
-                          tempo: sessionExerciseForm.params.tempo || null,
-                          effort: sessionExerciseForm.params.effort || null,
-                          block: sessionExerciseForm.params.block || null,
-                          load_progression_type: sessionExerciseForm.params.load_progression_type || null,
-                          load_progression_step: sessionExerciseForm.params.load_progression_step || null,
-                          reps_progression_type: sessionExerciseForm.params.reps_progression_type || null,
-                          reps_progression_step: sessionExerciseForm.params.reps_progression_step || null,
-                          set_details: filteredSetDetails.length ? filteredSetDetails : null,
-                          },
+                            load: sessionExerciseForm.params.load || null,
+                            rest: sessionExerciseForm.params.rest || null,
+                            biset_group: sessionExerciseForm.params.biset_group || null,
+                            notes: sessionExerciseForm.params.notes || null,
+                            tempo: sessionExerciseForm.params.tempo || null,
+                            effort: sessionExerciseForm.params.effort || null,
+                            block: sessionExerciseForm.params.block || null,
+                            load_progression_type: sessionExerciseForm.params.load_progression_type || null,
+                            load_progression_step: sessionExerciseForm.params.load_progression_step || null,
+                            reps_progression_type: sessionExerciseForm.params.reps_progression_type || null,
+                            reps_progression_step: sessionExerciseForm.params.reps_progression_step || null,
+                            set_details: filteredSetDetails.length ? filteredSetDetails : null,
+                           },
                       notes: sessionExerciseForm.notes || null,
                     };
                     try {
@@ -1654,7 +1746,7 @@ export default function ProfessorPlans() {
                               />
                             </div>
                           </div>
-                          <div className="grid md:grid-cols-3 gap-3">
+                          <div className="grid md:grid-cols-4 gap-3">
                             <div>
                               <label className="block text-sm font-medium mb-1">Bloco do treino</label>
                               <select
@@ -1666,6 +1758,50 @@ export default function ProfessorPlans() {
                                   <option key={block.value || 'blank'} value={block.value}>{block.label}</option>
                                 ))}
                               </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium mb-1">Grupo biset</label>
+                              <input
+                                className="w-full border rounded px-3 py-2 text-sm"
+                                value={sessionExerciseForm.params.biset_group}
+                                onChange={(e) => applyFormBisetGroup(e.target.value)}
+                                placeholder="Ex: A"
+                              />
+                              <p className="text-[11px] text-slate-500 mt-1">Use o mesmo grupo para combinar exercicios e descansar no ultimo.</p>
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                <button
+                                  type="button"
+                                  className={`text-[11px] border rounded px-2 py-1 ${!normalizedFormBisetGroup ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white hover:border-blue-300'}`}
+                                  onClick={() => applyFormBisetGroup('')}
+                                >
+                                  Sem biset
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[11px] border rounded px-2 py-1 bg-white hover:border-blue-300"
+                                  onClick={() => applyFormBisetGroup(suggestedBisetGroup)}
+                                >
+                                  Novo grupo {suggestedBisetGroup}
+                                </button>
+                                {bisetGroups.map((group) => (
+                                  <button
+                                    key={group}
+                                    type="button"
+                                    className={`text-[11px] border rounded px-2 py-1 ${normalizedFormBisetGroup === group ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white hover:border-blue-300'}`}
+                                    onClick={() => applyFormBisetGroup(group)}
+                                  >
+                                    Grupo {group}
+                                  </button>
+                                ))}
+                              </div>
+                              {normalizedFormBisetGroup && (
+                                <div className={`mt-2 rounded border px-2 py-1 text-[11px] ${formLikelyLastInGroup ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                                  {formLikelyLastInGroup
+                                    ? `Este item sera o ultimo do biset ${normalizedFormBisetGroup}. Defina o descanso aqui.`
+                                    : `Este item nao e o ultimo do biset ${normalizedFormBisetGroup}; o descanso sera aplicado apenas no ultimo exercicio do grupo.`}
+                                  {formLikelyLastInGroup && !normalizedFormRest ? ' Falta informar o descanso.' : ''}
+                                </div>
+                              )}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:col-span-2">
                               <div>
@@ -1836,6 +1972,7 @@ export default function ProfessorPlans() {
                     const ex = exerciseOptions.find((e) => e.id === item.exercise_id);
                     const isEndurance = ex && (ex.type === 'CORRIDA' || ex.type === 'PEDAL');
                     const setDetails = Array.isArray(item.params?.set_details) ? item.params.set_details : [];
+                    const bisetMeta = bisetMetaByItemId[item.id];
                     const isEditingItem = editingExerciseId === item.id;
                     return (
                       <div key={item.id} className={`border rounded-lg p-3 ${isEditingItem ? 'border-amber-400 bg-amber-50' : 'bg-white'}`}>
@@ -1843,6 +1980,11 @@ export default function ProfessorPlans() {
                           <div>
                             <p className="font-semibold text-slate-800">
                               {item.order}. {ex ? ex.name : 'Exercicio'} ({ex?.type || '-'})
+                              {bisetMeta && (
+                                <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                                  {bisetMeta.group}{bisetMeta.position}/{bisetMeta.total}
+                                </span>
+                              )}
                             </p>
                             <p className="text-xs text-slate-500">{ex?.group || 'Sem grupo'}</p>
                           </div>
@@ -1880,6 +2022,12 @@ export default function ProfessorPlans() {
                             {item.params?.tempo && <div>Tempo/cadencia: {item.params.tempo}</div>}
                             {item.params?.effort && <div>Esforco alvo: {item.params.effort}</div>}
                             {item.params?.block && <div>Bloco: {item.params.block}</div>}
+                            {item.params?.biset_group && (
+                              <div>
+                                Biset: Grupo {item.params.biset_group}
+                                {bisetMeta ? ` (${bisetMeta.position}/${bisetMeta.total})` : ''}
+                              </div>
+                            )}
                             {setDetails.length > 0 && (
                               <div className="space-y-1">
                                 <div className="font-semibold">Linhas de series:</div>
@@ -1899,6 +2047,9 @@ export default function ProfessorPlans() {
                               </div>
                             )}
                             {item.params?.rest && <div>Descanso: {item.params.rest}</div>}
+                            {item.params?.rest && bisetMeta && !bisetMeta.isLast && (
+                              <div className="text-amber-700">Descanso neste item e ignorado no app do aluno (descanso fica no ultimo do grupo).</div>
+                            )}
                             {item.params?.notes && <div>Notas: {item.params.notes}</div>}
                           </div>
                         )}

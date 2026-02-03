@@ -64,6 +64,7 @@ export default function AppShell({ children }) {
                   <NavLink to="/professor/alunos" label="Alunos" />
                   <NavLink to="/professor/exercicios" label="Exercicios" />
                   <NavLink to="/professor/planos" label="Planos" />
+                  <NavLink to="/professor/avaliacoes" label="Avaliacoes" />
                   <NavLink to="/professor/relatorios" label="Relatorios" />
                   <NavLink to="/conta" label="Conta" />
                 </>

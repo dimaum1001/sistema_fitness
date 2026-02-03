@@ -10,6 +10,7 @@ import ProfessorExercises from './pages/ProfessorExercises.jsx';
 import ProfessorPlans from './pages/ProfessorPlans.jsx';
 import ProfessorStudents from './pages/ProfessorStudents.jsx';
 import ProfessorReports from './pages/ProfessorReports.jsx';
+import ProfessorAssessments from './pages/ProfessorAssessments.jsx';
 import AlunoHistory from './pages/AlunoHistory.jsx';
 import AlunoLibrary from './pages/AlunoLibrary.jsx';
 import { RequireAuth, useAuth } from './context/AuthContext.jsx';
@@ -90,6 +91,14 @@ export default function App() {
         element={
           <RequireAuth role="PROFESSOR">
             <ProfessorReports />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/professor/avaliacoes"
+        element={
+          <RequireAuth role="PROFESSOR">
+            <ProfessorAssessments />
           </RequireAuth>
         }
       />

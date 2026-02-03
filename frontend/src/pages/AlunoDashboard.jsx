@@ -45,6 +45,54 @@ const resolvePerformedValue = (primary, secondary, fallback) => {
   return '';
 };
 
+const normalizeBisetGroup = (value) => String(value || '').trim().toUpperCase();
+
+const getExerciseBisetGroup = (exercise) => normalizeBisetGroup(exercise?.params?.biset_group);
+
+const shouldApplyRestForExercise = (session, exercise) => {
+  const group = getExerciseBisetGroup(exercise);
+  if (!group || !session?.exercises?.length) return true;
+  const currentOrder = Number(exercise?.order) || 0;
+  const currentId = Number(exercise?.id) || 0;
+  return !session.exercises.some((item) => {
+    if (!item) return false;
+    if (Number(item.id) === currentId) return false;
+    if (getExerciseBisetGroup(item) !== group) return false;
+    const itemOrder = Number(item.order) || 0;
+    if (itemOrder > currentOrder) return true;
+    return itemOrder === currentOrder && Number(item.id) > currentId;
+  });
+};
+
+const getOrderedSessionExercises = (session) => (
+  [...(session?.exercises || [])].sort(
+    (a, b) => (Number(a?.order) || 0) - (Number(b?.order) || 0) || (Number(a?.id) || 0) - (Number(b?.id) || 0),
+  )
+);
+
+const getBisetMetaByExerciseId = (session) => {
+  const grouped = {};
+  getOrderedSessionExercises(session).forEach((exercise) => {
+    const group = getExerciseBisetGroup(exercise);
+    if (!group) return;
+    if (!grouped[group]) grouped[group] = [];
+    grouped[group].push(exercise);
+  });
+  const map = {};
+  Object.entries(grouped).forEach(([group, items]) => {
+    items.forEach((exercise, idx) => {
+      map[exercise.id] = {
+        group,
+        position: idx + 1,
+        total: items.length,
+        isLast: idx === items.length - 1,
+        nextExercise: items[idx + 1] || null,
+      };
+    });
+  });
+  return map;
+};
+
 export default function AlunoDashboard() {
   const { user } = useAuth();
   const [agenda, setAgenda] = useState([]);
@@ -170,6 +218,10 @@ export default function AlunoDashboard() {
     const isActive = activeSession?.sessionId === s.id;
     const currentExercise = isActive ? s.exercises[activeSession.exerciseIndex] : null;
     const isChosen = treinoDoDia?.id === s.id;
+    const bisetMetaByExerciseId = getBisetMetaByExerciseId(s);
+    const currentBisetMeta = currentExercise ? bisetMetaByExerciseId[currentExercise.id] : null;
+    const nextExerciseInSession = isActive ? s.exercises[activeSession.exerciseIndex + 1] : null;
+    const nextBisetMeta = nextExerciseInSession ? bisetMetaByExerciseId[nextExerciseInSession.id] : null;
 
     return (
       <div key={s.id} className={`border rounded-lg p-3 bg-white space-y-3 ${isChosen ? 'ring-2 ring-blue-200' : ''}`}>
@@ -196,15 +248,19 @@ export default function AlunoDashboard() {
             </div>
             {(() => {
               const currentRest = restTimer && restTimer.exerciseId === currentExercise?.id ? restTimer : null;
-              const plannedRestMs = currentExercise ? parseRestSeconds(currentExercise.params?.rest) * 1000 : 0;
+              const shouldApplyRest = currentExercise ? shouldApplyRestForExercise(s, currentExercise) : false;
+              const plannedRestMs = currentExercise && shouldApplyRest ? parseRestSeconds(currentExercise.params?.rest) * 1000 : 0;
               const displayMs = currentRest ? currentRest.remainingMs : plannedRestMs;
+              const bisetWithoutRest = currentBisetMeta && !shouldApplyRest;
               const statusLabel = currentRest?.running
                 ? 'Contando'
                 : currentRest
                   ? 'Descanso concluido'
                   : plannedRestMs > 0
                     ? 'Aguardando'
-                    : 'Sem descanso';
+                    : bisetWithoutRest
+                      ? 'No fim do biset'
+                      : 'Sem descanso';
               return (
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-semibold">Descanso</span>
@@ -224,6 +280,15 @@ export default function AlunoDashboard() {
                   </div>
                   <div className="text-xs text-slate-600">{activeSession.exerciseIndex + 1} / {s.exercises.length}</div>
                 </div>
+                {currentBisetMeta && (
+                  <p className="text-[11px] text-slate-600">
+                    Biset {currentBisetMeta.group} ({currentBisetMeta.position}/{currentBisetMeta.total})
+                    {currentBisetMeta.nextExercise
+                      ? ` -> proximo: ${currentBisetMeta.nextExercise.exercise?.name || 'exercicio'}`
+                      : ''}
+                    {!shouldApplyRestForExercise(s, currentExercise) ? ' | descanso no fim do biset' : ''}
+                  </p>
+                )}
                 {currentExercise.params?.notes && <p className="text-[11px] text-slate-600">Notas: {currentExercise.params.notes}</p>}
 
                 {(() => {
@@ -301,13 +366,42 @@ export default function AlunoDashboard() {
                 })()}
 
                 <div className="flex justify-end gap-2 text-sm sm:text-xs">
-                    <button
-                      className="bg-emerald-600 text-white px-3 py-2 sm:py-1 rounded"
-                      onClick={() => finishExercise(s, currentExercise)}
-                      disabled={savingExecution}
-                    >
-                      {activeSession.exerciseIndex + 1 >= s.exercises.length ? 'Finalizar sessao' : 'Finalizar exercicio'}
-                    </button>
+                  {(() => {
+                    const statusArr = activeSession.setStatus[currentExercise.id] || [];
+                    const hasPending = statusArr.some((status) => status === 'pending');
+                    const isEndurance = currentExercise.exercise?.type === 'CORRIDA' || currentExercise.exercise?.type === 'PEDAL';
+                    const isLastInSession = activeSession.exerciseIndex + 1 >= s.exercises.length;
+                    const sameBisetAsNext = Boolean(
+                      currentBisetMeta
+                      && nextBisetMeta
+                      && currentBisetMeta.group === nextBisetMeta.group,
+                    );
+                    let finishLabel = 'Finalizar exercicio';
+                    if (isLastInSession) finishLabel = 'Finalizar sessao';
+                    else if (sameBisetAsNext) finishLabel = `Ir para ${nextBisetMeta.group}${nextBisetMeta.position}`;
+                    else if (currentBisetMeta?.isLast) finishLabel = 'Finalizar biset';
+
+                    return (
+                      <>
+                        {!isEndurance && hasPending && (
+                          <button
+                            type="button"
+                            className="bg-slate-200 text-slate-700 px-3 py-2 sm:py-1 rounded"
+                            onClick={() => completeAllSets(s, currentExercise)}
+                          >
+                            Concluir todas as series
+                          </button>
+                        )}
+                        <button
+                          className="bg-emerald-600 text-white px-3 py-2 sm:py-1 rounded"
+                          onClick={() => finishExercise(s, currentExercise)}
+                          disabled={savingExecution}
+                        >
+                          {finishLabel}
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
@@ -333,14 +427,23 @@ export default function AlunoDashboard() {
                 if (ex.params?.distance_km) summaryParts.push(`${ex.params.distance_km} km`);
                 if (ex.params?.pace_target) summaryParts.push(`pace ${ex.params.pace_target}`);
               } else {
+                const bisetMeta = bisetMetaByExerciseId[ex.id];
                 if (ex.params?.sets || ex.params?.reps) summaryParts.push(`${ex.params?.sets || '?'}x${ex.params?.reps || '?'}`);
                 if (ex.params?.load) summaryParts.push(ex.params.load);
-                if (ex.params?.rest) summaryParts.push(`desc ${ex.params.rest}`);
+                if (bisetMeta) summaryParts.push(`biset ${bisetMeta.group}${bisetMeta.position}/${bisetMeta.total}`);
+                if (ex.params?.rest && shouldApplyRestForExercise(s, ex)) summaryParts.push(`desc ${ex.params.rest}`);
               }
               return (
                 <div key={ex.id} className="border rounded px-3 py-2 bg-white text-xs flex justify-between">
                   <div>
-                    <p className="font-semibold text-slate-800">{ex.order}. {ex.exercise.name}</p>
+                    <p className="font-semibold text-slate-800">
+                      {ex.order}. {ex.exercise.name}
+                      {bisetMetaByExerciseId[ex.id] && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                          {bisetMetaByExerciseId[ex.id].group}{bisetMetaByExerciseId[ex.id].position}/{bisetMetaByExerciseId[ex.id].total}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-[11px] text-slate-600">{summaryParts.join(' - ') || ex.exercise.type}</p>
                   </div>
                   <span className="text-[11px] text-slate-500 uppercase">{status}</span>
@@ -353,16 +456,25 @@ export default function AlunoDashboard() {
             {s.exercises.map((ex) => {
               const endurance = ex.exercise.type === 'CORRIDA' || ex.exercise.type === 'PEDAL';
               const setDetails = Array.isArray(ex.params?.set_details) ? ex.params.set_details : [];
+              const bisetMeta = bisetMetaByExerciseId[ex.id];
               const summary = [];
               if (ex.params?.sets || ex.params?.reps) summary.push(`${ex.params?.sets || '?'}x${ex.params?.reps || '?'}`);
               if (ex.params?.load) summary.push(ex.params.load);
-              if (ex.params?.rest) summary.push(`desc ${ex.params.rest}`);
+              if (bisetMeta) summary.push(`biset ${bisetMeta.group}${bisetMeta.position}/${bisetMeta.total}`);
+              if (ex.params?.rest && shouldApplyRestForExercise(s, ex)) summary.push(`desc ${ex.params.rest}`);
               if (ex.params?.effort) summary.push(ex.params.effort);
 
               return (
                 <div key={ex.id} className="border rounded px-3 py-2 bg-slate-50 text-xs text-slate-700">
                   <div className="flex justify-between gap-2 flex-wrap">
-                    <span className="font-semibold">{ex.order}. {ex.exercise.name}</span>
+                    <span className="font-semibold">
+                      {ex.order}. {ex.exercise.name}
+                      {bisetMetaByExerciseId[ex.id] && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                          {bisetMetaByExerciseId[ex.id].group}{bisetMetaByExerciseId[ex.id].position}/{bisetMetaByExerciseId[ex.id].total}
+                        </span>
+                      )}
+                    </span>
                     <span className="text-slate-500">{ex.exercise.type}</span>
                   </div>
                   {endurance ? (
@@ -394,6 +506,7 @@ export default function AlunoDashboard() {
                           Ajuste de reps: {ex.params?.reps_progression_type || 'sem tendencia'} {ex.params?.reps_progression_step || ''}
                         </div>
                       )}
+                      {bisetMeta && <div className="text-[11px] text-slate-600">Biset: Grupo {bisetMeta.group} ({bisetMeta.position}/{bisetMeta.total})</div>}
                       {ex.params?.notes && <div className="text-[11px] text-slate-600">Notas: {ex.params.notes}</div>}
                     </div>
                   )}
@@ -457,7 +570,7 @@ export default function AlunoDashboard() {
     const statusArr = activeSession.setStatus[exercise.id] || [];
     if (!statusArr.length) return;
 
-    const hasPending = statusArr.some((st) => st === 'pending');
+    const hasPending = statusArr.some((st) => st === 'pending' || st === 'resting');
     const key = `${session.id}:${exercise.id}`;
     if (hasPending) {
       if (autoAdvanceRef.current === key) autoAdvanceRef.current = '';
@@ -614,9 +727,52 @@ export default function AlunoDashboard() {
     });
   }
 
+  function completeAllSets(session, exercise) {
+    if (!activeSession || !exercise) return;
+    const isEndurance = exercise.exercise?.type === 'CORRIDA' || exercise.exercise?.type === 'PEDAL';
+    if (isEndurance) return;
+
+    const plannedLines = setLinesRef.current[exercise.id] || setLines[exercise.id] || buildSets(exercise);
+    const lineCount = Math.max(plannedLines.length, 1);
+    const shouldApplyRest = shouldApplyRestForExercise(session, exercise);
+    const restSec = shouldApplyRest ? parseRestSeconds(exercise.params?.rest) : 0;
+
+    setActiveSession((prev) => {
+      if (!prev) return prev;
+      const currentStatus = prev.setStatus[exercise.id] || [];
+      const targetCount = Math.max(lineCount, currentStatus.length || 0, 1);
+      const arr = Array.from({ length: targetCount }, () => 'done');
+      let nextRest = null;
+
+      if (restSec > 0) {
+        const lastIdx = targetCount - 1;
+        arr[lastIdx] = 'resting';
+        nextRest = {
+          exerciseId: exercise.id,
+          setIdx: lastIdx,
+          startedAt: Date.now(),
+          targetMs: restSec * 1000,
+          remainingMs: restSec * 1000,
+          running: true,
+        };
+      }
+
+      setRestTimer(nextRest);
+      return {
+        ...prev,
+        setStatus: {
+          ...prev.setStatus,
+          [exercise.id]: arr,
+        },
+      };
+    });
+  }
+
   function toggleSetDone(exercise, setIdx) {
     if (!activeSession) return;
-    const restSec = parseRestSeconds(exercise.params?.rest);
+    const session = agenda.find((item) => item.id === activeSession.sessionId);
+    const shouldApplyRest = shouldApplyRestForExercise(session, exercise);
+    const restSec = shouldApplyRest ? parseRestSeconds(exercise.params?.rest) : 0;
 
     setActiveSession((prev) => {
       if (!prev) return prev;
@@ -683,7 +839,8 @@ export default function AlunoDashboard() {
     const restingIdx = statusArr.findIndex((st) => st === 'resting');
     if (restingIdx < 0) return;
 
-    const restSec = parseRestSeconds(exercise.params?.rest);
+    const shouldApplyRest = shouldApplyRestForExercise(session, exercise);
+    const restSec = shouldApplyRest ? parseRestSeconds(exercise.params?.rest) : 0;
     if (restSec <= 0) return;
 
     setRestTimer((prev) => {

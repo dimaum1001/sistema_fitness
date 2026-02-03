@@ -118,3 +118,13 @@ export { API_URL };
 
 // --- Students ---
 export const listStudents = () => request('/alunos');
+
+// --- Assessments ---
+export const createStudentAssessment = (payload) =>
+  request('/avaliacoes', { method: 'POST', body: JSON.stringify(payload) });
+export const listStudentAssessments = (studentId) =>
+  request(`/avaliacoes/aluno/${studentId}`);
+export const updateStudentAssessment = (assessmentId, payload) =>
+  request(`/avaliacoes/${assessmentId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+export const deleteStudentAssessment = (assessmentId) =>
+  request(`/avaliacoes/${assessmentId}`, { method: 'DELETE' });
